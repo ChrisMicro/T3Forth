@@ -54,6 +54,7 @@ char getCharFromStream()
 		{
 			fclose(InputFile);
 			InputStreamState=GETKEY; // switch to keyboard
+			SYSTEMOUT("\nok>");
 			c=' ';
 		}
 	}
