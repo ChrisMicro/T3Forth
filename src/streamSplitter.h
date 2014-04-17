@@ -10,7 +10,7 @@ extern "C"
 
 #ifndef __STREAMSPLITTER__
   #define __STREAMSPLITTER__
-
+    #include <stdio.h>
 	#define true (1==1)
 	#define false (!true)
 

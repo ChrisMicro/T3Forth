@@ -6,7 +6,7 @@
  */
 
 #include "platform.h"
-#include "qrzVm.h"
+#include "qrzForth.h"
 #include "systemout.h"
 #include <time.h>
 
@@ -16,7 +16,7 @@ extern uint8_t Base;
 uint16_t RamMemory[RAMSIZE];
 uint8_t Memory_u8[STSIZE];
 uint8_t Memory_bigEndian_u8[STSIZE]; // big endian memory for other processors than PC
-
+/*
 void writeMemory(Cpu_t *cpu,uint16_t wordAddress, uint16_t value)
 {
 	  uint16_t * p;
@@ -34,7 +34,7 @@ uint16_t readMemory(Cpu_t *cpu, uint16_t wordAddress)
 
 	return value;
 }
-
+*/
 // tbd: move display memory outside the cpu
 #define COLUMNS 		100
 #define ROWS			10
@@ -85,6 +85,7 @@ uint32_t updateSysCounter() {
  }
 void cpuExternalCall(Cpu_t *cpu)
 {
+  /*
 	int32_t command=pop(cpu);
 	uint16_t value;
 
@@ -124,4 +125,5 @@ void cpuExternalCall(Cpu_t *cpu)
 		}break;
 		default: SYSTEMOUT("external command not found");break;
 	}
+	*/
 }

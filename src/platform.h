@@ -12,7 +12,7 @@
 
 	#include <stdio.h>
 	#include <stdint.h>
-	#include "qrzVm.h"
+//	#include "qrzVm.h"
 
 	#ifdef PC_PLATFORM
 
@@ -29,9 +29,10 @@
 	/***************************************************************************************
 	  Function Prototypes
 	***************************************************************************************/
-	void writeMemory(Cpu_t *,uint16_t, uint16_t );
+/*
+void writeMemory(Cpu_t *,uint16_t, uint16_t );
 	uint16_t readMemory(Cpu_t *, uint16_t );
 	void cpuExternalCall(Cpu_t *);
 	void showScreen(Cpu_t *);
-
+*/
 #endif /* PLATFORM_H_ */

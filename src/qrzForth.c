@@ -6,18 +6,13 @@
  Version     :
  Copyright   : GPL license 3
  	 	 	 ( chris (at) roboterclub-freiburg.de )
- Date        : 7 November 2013
+ Date        :
 
- Description : qrzForth - FORTH interpreter in C, Ansi-style
+ Description : T3Forth - FORTH interpreter in C, Ansi-style
 
  ============================================================================
  */
 /*
- * This is a forth compiler and interpreter written in C.
- * It produces code and runs the code on a virtual machine.
- * The virtual machine is kept very small therefore it can
- * be implemented on microcontrollers with very little resources.
- * Also this machine can be implemented on a FPGA.
  *
  */
 
@@ -26,9 +21,10 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "qrzVm.h"
+#include "qrzForth.h"
 #include "systemout.h"
 #include "streamSplitter.h"
+#include "platform.h"
 
 uint8_t Base=10; // startup forth with decimal base
 
@@ -142,8 +138,8 @@ Index_t CodePointer=CODESTARTADDRESS;
  **************************************************************************/
 typedef struct{
 	Index_t indexOfNextEntry;
-	Index_t code;
-	uint16_t flags;
+	Index_t code; // address of codeword
+	//byuint16_t flags;
 	char firstCharOfName;
 }DirEntry_t;
 /****************************************************************************
@@ -245,12 +241,13 @@ Index_t setEntryName(char * string)
 		if((nextCodeIndex & 1)==1)nextCodeIndex++; // alignment to 16 bit
 		de->code=nextCodeIndex;
 	#else
+		// set the address of to the code
 		de->code=CodePointer;
 		nextCodeIndex=CodePointer;
 	#endif
 
 	// tbd:magic number not allowed, include vm-instructions definition at the beginning
-	de->code|=0xC000; // call to code
+	//de->code|=0xC000; // call to code
     return nextCodeIndex; 
 }
 
@@ -294,6 +291,8 @@ Index_t appendEntryCode(Index_t place, Index_t indexToForthWord)
 **************************************************************************/
 Index_t appendCode(Index_t place, Index_t vmInstruction)
 {
+  printf("\nappendCode place:%d, instr:%x",place,vmInstruction);
+
 	 Memory_u8[place++]=vmInstruction&0xFF;
 	 Memory_u8[place++]=vmInstruction>>8;
 	 //CodePointer+=2;
@@ -486,9 +485,26 @@ void disassmbleWord(Index_t code)
 {
 	DirEntry_t * de;
 	Index_t index;
-	index=findCode(code);
+	index=findCode((code&0777)|T3_2WORD);
 	de=getDirEntryPointer(index);
+    if(de->code==0)
+      {
+      index=findCode((code&0777)|T3_1WORD);
+      de=getDirEntryPointer(index);
+      //printf("look for one word:%x",((code&0777)|T3_1WORD));
+      }
 
+	//printf("code:%x,index:%x de->code%x",code,index,de->code);
+    if(index!=0)
+    {
+        SYSTEMOUT_(" ");
+        SYSTEMOUT_((char *)&de->firstCharOfName);
+        if((code&07000)==ABS) SYSTEMOUT_("+ABS");
+        if((code&07000)==IND) SYSTEMOUT_("+IND");
+        SYSTEMOUT_("\t\t ");
+    }
+
+/*
 	if((code&COMMANDGROUP2)==0){SYSTEMOUT_(" push\t\t ");}
 	else
 	if((code&COMMANDGROUP2MASK )==JMPZ)
@@ -516,6 +532,7 @@ void disassmbleWord(Index_t code)
 			SYSTEMOUT_("\t\t ");
 		}
 	}
+	*/
 }
 
 
@@ -569,10 +586,23 @@ void disassmbleWord(Index_t code)
 #define FORTH_REPEAT 0xF112
 #define FORTH_IMMEDIATE 0xF113
 
+#define T3_ABS 0xF114
+#define T3_IND 0xF114
+
 // the label stack is only used by the compiler for
 // nested loops. e.g. if-else-then, begin-until
 #define LABELSTACKSIZE 64
-
+uint8_t getNumber(char * buffer,int32_t *number)
+{
+  int32_t num;
+  if(isnumeric(buffer))
+  {
+    num = strtol(WordBuffer, NULL, Base);
+    *number=num;
+    return 1;
+  }
+  else return 0;
+}
 void compile(Index_t compileIndex)
 {
 	Index_t id;
@@ -590,12 +620,32 @@ void compile(Index_t compileIndex)
 			if(isnumeric(WordBuffer))
 			{
 				int16_t number = strtol(WordBuffer, NULL, Base);
+				/*
 				if(number<0)
 				{
 					number=~number;
 					compileIndex= appendCode(compileIndex,number); // add constant to code
 					compileIndex= appendCode(compileIndex,_NOT | COMMANDGROUP2); // add constant to code
 				}else compileIndex= appendCode(compileIndex,number); // add constant to code
+				*/
+                if(number<0)
+                {
+                    //number=~number;
+                    //compileIndex= appendCode(compileIndex,number); // add constant to code
+                    //compileIndex= appendCode(compileIndex,_NOT | COMMANDGROUP2); // add constant to code
+                }else
+                {
+                  Index_t pd=searchWord("PUSHA");
+                  if(pd!=0)
+                  {
+                    compileIndex= appendCode(compileIndex,LDA); // T3 gusub unconditional
+                    compileIndex= appendCode(compileIndex, number); // address for gosub
+                    compileIndex= appendCode(compileIndex,GSBU); // T3 gusub unconditional
+                    DirEntry_t * de;
+                    de=getDirEntryPointer(pd);
+                    compileIndex= appendCode(compileIndex, de->code); // address for PUSHDATA
+                  }else SYSTEMOUT("fatal error: please provide PUSHA Forth word");
+                }
 			}
 			else
 			{
@@ -610,8 +660,14 @@ void compile(Index_t compileIndex)
 
             switch(forthwordCode)
             {
-
-
+            /*
+              case T3_ABS:{
+                  uint16_t cc=(uint16_t) (Memory_u8[compileIndex+1]<<8)+Memory_u8[compileIndex];
+                  cc+=ABS;
+                  Memory_u8[compileIndex]=cc&0xFF;
+                  Memory_u8[compileIndex+1]=cc>>8;
+              }break;*/
+/*
             	// forth string start word: s"
             	case FORTH_STRING:{ // make a string in code memory
 					// the new label is the address of the jump
@@ -760,6 +816,7 @@ void compile(Index_t compileIndex)
 					// drop
 					compileIndex= appendCode(compileIndex,(Index_t) DROP | COMMANDGROUP2);
 				}break;
+				*/
 				// forth word: #d ( switch to dec base )
 				case BASEDEC: // set console input/output base
 				{
@@ -770,24 +827,75 @@ void compile(Index_t compileIndex)
 				{
 					Base=16;
 				}break;
-				// if it was not an immediate word, add the code to the new forth word
-				default:
-				{
-	            	compileIndex= appendEntryCode(compileIndex, id);
-				}break;
 
 				// forth word: ;
             	case COMPILESTOP:
 				{
 	            	if(labelStackPointer==0)
 	            	{
-	            		compileIndex= appendCode(compileIndex, RTS|COMMANDGROUP2); // lastEntry=return command of cpu
-	            		nextEntry(compileIndex);
-	            		SYSTEMOUT_(" ");
+	            	  SYSTEMOUT("compile stop");
+	            		//compileIndex= appendCode(compileIndex, RTS|COMMANDGROUP2); // lastEntry=return command of cpu
+	            	  SYSTEMOUTHEX("compile index",compileIndex);
+	            	  compileIndex= appendCode(compileIndex,(Index_t) PLPC);
+	            	  SYSTEMOUTOCT(" oct:",PLPC);
+	            	  nextEntry(compileIndex);
+	            	  SYSTEMOUT_(" ");
 	            	}else SYSTEMOUT(" error: conditional not closed");
 	                exitFlag=true;
 				}break;
 
+                // if it was not an immediate word, add the code to the new forth word
+                default:
+                {
+                  /********************************************************************
+                   *  assembler
+                   ********************************************************************/
+                  if((forthwordCode&~T3_MASK)) // check if direct assembler instruction
+                  {
+                    Index_t tmp=0,relative=0;
+                    //compileIndex= appendCode(compileIndex,(forthwordCode&T3_MASK));
+                    if((forthwordCode&~T3_MASK)==T3_2WORD)
+                    {
+                        getWordFromStreamWithOutComments();
+                        // check for absolut addressing
+                        if(strcmp(WordBuffer,"+ABS")==0)
+                        {
+                          tmp=ABS;
+                          getWordFromStreamWithOutComments();
+                        }
+                        // check for indirect addressing
+                        if(strcmp(WordBuffer,"+IND")==0)
+                        {
+                          tmp=IND;
+                          getWordFromStreamWithOutComments();
+                        }
+                        if(strcmp(WordBuffer,"+REL")==0) // relative jump location
+                        {
+                          relative=compileIndex/2+2; // current location + 4 bytes, becaus jump is 4 bytes long ( opcode,address )
+                          getWordFromStreamWithOutComments();
+                        }
+                        compileIndex= appendCode(compileIndex,((forthwordCode&T3_MASK)+tmp));
+                        int32_t num;
+                        if(getNumber(WordBuffer,&num))
+                        {
+                          compileIndex= appendCode(compileIndex,num+relative);
+                        }
+                        else SYSTEMOUT("error, no number");
+                    }else if((forthwordCode&~T3_MASK)==T3_1WORD)
+                    {
+                      compileIndex= appendCode(compileIndex,((forthwordCode&T3_MASK)));
+                    }else SYSTEMOUT("error, no T3_1WORD");
+                  }
+
+                  else  // no assembler instruction, put call
+                  {
+                    compileIndex= appendCode(compileIndex,GSBU); // T3 gosub unconditional
+                    //printf("---Id%x---, ---Id/2:%x---",id,id/2);
+                    DirEntry_t * de=getDirEntryPointer(id);
+                    compileIndex= appendCode(compileIndex, (de->code)/2); // address for gosub/2 because vm needs word address
+                    SYSTEMOUT("new word");
+                  }
+                }break;
             }
         }
     }
@@ -800,7 +908,11 @@ void dumpMemory(uint16_t address, uint16_t length)
 
 	for(n=0;n<length;n++)
 	{
-		if((n%ROWS_OF_DUMP)==0) SYSTEMOUTCR;
+		if((n%ROWS_OF_DUMP)==0){
+	      SYSTEMOUTCR;
+		  SYSTEMOUTHEX("",address);
+		  SYSTEMOUT_(": ");
+		}
 		uint16_t value;
 		value=((uint16_t)Memory_u8[address+1]<<8)+Memory_u8[address];
 		address+=2;
@@ -921,11 +1033,74 @@ void makeBigEndian()
     		CurrentIndex = de->indexOfNextEntry;
     	}while (CurrentIndex!=0);
 }
-
+/***********************************************************************/
+void dumpMem(Cpu_t *cpu)
+{
+  SYSTEMOUT("dump mem:");
+  uint16_t n;
+  for(n=0; n<0x50;n++)SYSTEMOUTHEX(" ",cpu->M[0][n]);
+  SYSTEMOUT(" ");
+}
+void cpyMem2Vm(Cpu_t *cpu)
+{
+  uint16_t k;
+  for(k=0;k<M_SIZE*2;k+=2)
+  {
+    uint16_t cc;
+    cc=(uint16_t) (Memory_u8[k+1]<<8)+Memory_u8[k];
+    cpu->M[0][k/2]=cc;
+  }
+}
+void cpyVm2Mem(Cpu_t *cpu)
+{
+  uint16_t k;
+  for(k=0;k<M_SIZE;k++)
+  {
+    writeMem(k,cpu->M[0][k]);
+  }
+}
+void writeMem(uint16_t wordAddress, uint16_t value)
+{
+  Memory_u8[wordAddress*2]=value&0xFF;
+  Memory_u8[wordAddress*2+1]=value>>8;
+}
+uint16_t readMem(uint16_t wordAddress)
+{
+  uint16_t value;
+  value=Memory_u8[wordAddress*2];
+  value|=Memory_u8[wordAddress*2+1]<<8;
+  return value;
+}
+// initialize the virtual data stack pointer in memory
+void initStack(Cpu_t *cpu)
+{
+  writeMem(DATASTACKPOINTER,DATASTACK);
+}
+void pushDsp(uint16_t value)
+{
+  uint8_t dsp;
+  dsp=readMem(DATASTACKPOINTER)+1;
+  writeMem(DATASTACKPOINTER,dsp);
+  writeMem(dsp,value);
+}
+uint16_t readDspVal(uint16_t offset)
+{
+  return readMem(DATASTACK+offset);
+}
 void dumpStack(Cpu_t *cpu)
 {
-	uint16_t sp;
-	for(sp=0; sp<cpu->datasp;sp++)SYSTEMOUTHEX(" ",cpu->dataStack[sp]);
+    uint16_t n,count,dsp;
+    // dumpMem(&cpu);
+    // get datastackpointer
+    cpu->Pc=DATASTACKPOINTER;
+    dsp=readMemory(cpu,0);
+    //SYSTEMOUTHEX("stack deph:",count);
+    count=dsp-DATASTACK;
+    //SYSTEMOUTHEX("stack deph:",count);
+    for(n=0; n<count;n++){
+      //cpu->Pc=dsp+n+1;
+      SYSTEMOUTHEX(" ",readDspVal(n+1));
+    }
 }
 
 uint8_t forth()
@@ -938,10 +1113,26 @@ uint8_t forth()
 
   Cpu_t cpu;
   simulatorReset(&cpu);
+  initStack(&cpu);
+  dumpMemory(0,0x20);
 
   addDirEntry("none",0);
   // CPU words
-  addDirEntry("0=",       CMPZA           |COMMANDGROUP2);
+  //addDirEntry("+ABS", T3_ABS );
+  //addDirEntry("+IND", T3_IND );
+  addDirEntry("JMP", JMPU | T3_2WORD );
+  addDirEntry("JMPEQ", JMPS|   EQ_FLAG | T3_2WORD );
+  addDirEntry("LDA", LDA  | T3_2WORD);
+  addDirEntry("STA", STA  | T3_2WORD);
+  addDirEntry("SAF", SAF  | T3_1WORD);
+  addDirEntry("CAF", CAF  | T3_1WORD);
+  addDirEntry("PLPC", PLPC  | T3_1WORD);
+  addDirEntry("PLUS", PLUS | T3_2WORD);
+  addDirEntry("DEC", DEC | T3_2WORD);
+  addDirEntry("CMP", CMP | T3_2WORD);
+  //addDirEntry("0=",       CMPZA           |COMMANDGROUP2);
+  //addDirEntry("PLPC",     PLPC            |COMMANDGROUP2);
+  /*
   addDirEntry("1+",       PLUS1           |COMMANDGROUP2);
   addDirEntry("2+",       PLUS2           |COMMANDGROUP2);
   addDirEntry("0<>",      CMPNZA          |COMMANDGROUP2);
@@ -980,7 +1171,7 @@ uint8_t forth()
   addDirEntry("jmpz",     JMPZ            |COMMANDGROUP2);
   addDirEntry("call",     CALL            |COMMANDGROUP2);
   addDirEntry("external", EXTERNAL_C      |COMMANDGROUP2);
-
+*/
   // chForth local system words
   addDirEntry("bye",BYE);     // exit forth
   addDirEntry("words",WORDS); // list words
@@ -1035,13 +1226,26 @@ uint8_t forth()
           {
               // the number can be in decimal or hexadecimal format
               int16_t number = strtol(WordBuffer, NULL, Base);
+              //push(&cpu,number);
+              /*
+              cpu.Pc=DATASTACKPOINTER;
+              uint16_t dsp=readMemory(&cpu,0);
+              cpu.Pc=dsp;
+              writeMemory(&cpu,0,number);*/
+              pushDsp(number);
+              cpyMem2Vm(&cpu);
+
+             /*
               if(number<0) // unfortunately the cpu can only push 15bit constants
               {
+
                   // we use a trick to push 16 bit
                   number=~number;
                   executeVm(&cpu,number&0x7fff); // push constant on stack
                   executeVm(&cpu,_NOT | COMMANDGROUP2); // invert
+
               }else executeVm(&cpu,number&0x7fff); // push constant on stack
+          */
           }
           else
               {
@@ -1056,6 +1260,17 @@ uint8_t forth()
 #endif
           switch(getDirEntryPointer(id)->code)
           {
+              // make a new FORTH word
+              case COMPILE: {
+                  SYSTEMOUT_("COMPILE ");
+                  getWordFromStreamWithOutComments();
+                  SYSTEMOUT_(WordBuffer); // show the name of the word which is compiled
+                  CurrentIndex=findEmptyDirEntryIndex();
+                  Index_t compileIndex;
+                  compileIndex=setEntryName(WordBuffer);
+                  compile(compileIndex);
+              }break;
+
               case RESTART:
               {
                 restartFlag=true;
@@ -1073,7 +1288,7 @@ uint8_t forth()
               {
                   getWordFromStreamWithOutComments();
                   uint16_t value=WordBuffer[0];
-                  executeVm(&cpu,value); // push char value on stack
+                  //executeVm(&cpu,value); // push char value on stack
               }break;
 
               case DEBUGWORD:
@@ -1106,26 +1321,17 @@ uint8_t forth()
                   showDictionary();
               }break;
 
-              case COMPILE: {
-                  SYSTEMOUT_("COMPILE ");
-                  getWordFromStreamWithOutComments();
-                  SYSTEMOUT_(WordBuffer);
-                  CurrentIndex=findEmptyDirEntryIndex();
-                  Index_t compileIndex;
-                  compileIndex=setEntryName(WordBuffer);
-                  compile(compileIndex);
-              }break;
-
               case INCLUDE: {
                   getWordFromStreamWithOutComments(); // get file name
                   InputStreamState=OPENFILE; // switch to file input
               }break;
 
               case FORTH_CONSTANT: {
+                /*
                   getWordFromStreamWithOutComments();
                   uint16_t k=pop(&cpu);
                   if((k&0x8000)!=0) SYSTEMOUT("Warning: negative constants will be interpreted as VM commands in this FORTH version");
-                  addDirEntry(WordBuffer,k);
+                  addDirEntry(WordBuffer,k);*/
               }break;
 
               case FORTH_VARIABLE: {
@@ -1134,7 +1340,9 @@ uint8_t forth()
               }break;
 
               case FORTH_ALLOT: {
+                /*
                   RamHeap+=pop(&cpu);
+                  */
               }break;
 
               // set reset vector to forth word given
@@ -1145,6 +1353,7 @@ uint8_t forth()
                       id=searchWord(WordBuffer);
                       if(id!=0) // if word found
                       {
+                        /*
                           de=getDirEntryPointer(id);
                           id=de->code;
                           // id|=JMP; // JMP to main
@@ -1157,6 +1366,7 @@ uint8_t forth()
                           id|=JMP; // replace by a jmp
                           Memory_u8[0]=id&0xff;
                           Memory_u8[1]=id>>8;
+                          */
                       }
               }break;
 
@@ -1169,20 +1379,28 @@ uint8_t forth()
                   SYSTEMOUT("");
                   if(id==0)break;
                   de=getDirEntryPointer(id);
-                  for(k=id;k<de->indexOfNextEntry;k++) SYSTEMOUTHEX2(" ",Memory_u8[k]);
+                  for(k=id;k<de->indexOfNextEntry;k++)
+                    {
+                      //SYSTEMOUTHEX2(" 0x",Memory_u8[k]);
+                      SYSTEMOUTOCT(" oct:",Memory_u8[k]);
+                    }
                   SYSTEMOUT("\n");
                   Index_t codestart;
+                  /*
                   if(((de->code)&COMMANDGROUP2MASK)==CALL)
                   {
                       codestart=(de->code)&~CALL;
                   }
-                  else codestart=de->code;
+                  else codestart=de->code;*/
+                  // show the forth word header
                   for(k=id;k<de->indexOfNextEntry;)
                   {
                       //if(k==codestart){SYSTEMOUT("===== code =======");}
                       SYSTEMOUTHEX("adr:",k);
+
                       uint16_t cc=(uint16_t) (Memory_u8[k+1]<<8)+Memory_u8[k];
                       SYSTEMOUTHEX(" ",cc);
+                      //SYSTEMOUTOCT(" oct:",cc);
                       if(k==id){SYSTEMOUT_(" <= index of next entry");}
                       if(k==id+2)disassmbleWord(cc);
                       if(k>(id+3))
@@ -1202,10 +1420,13 @@ uint8_t forth()
                       k+=2;
                   }
                   // disassemble code
-                  if(((de->code)&COMMANDGROUP2MASK)==CALL)
+
+                  //if(((de->code)&COMMANDGROUP2MASK)==CALL)
+
                   {
                       SYSTEMOUT("===== code =======");
-                      codestart=(de->code)&~CALL;
+                      codestart=(de->code)&~0xF000;
+                      //codestart=(de->code);
                       k=codestart;
                       uint8_t cnt=0;
                       uint16_t cc;
@@ -1214,11 +1435,12 @@ uint8_t forth()
                           cc=(uint16_t) (Memory_u8[k+1]<<8)+Memory_u8[k];
                           SYSTEMOUTHEX("adr:",k);
                           SYSTEMOUTHEX(" ",cc);
+                          SYSTEMOUTOCT(" oct:",cc&T3_MASK);
                           k+=2;
                           disassmbleWord(cc);
                           SYSTEMOUT("");
                           cnt++;
-                      }while((cc!=(RTS|COMMANDGROUP2))&&(cnt<100));
+                      }while((cc!=(RTS))&&(cnt<100));
                   }
               }break;
 
@@ -1231,6 +1453,7 @@ uint8_t forth()
 
               case DEBUGSIM: // 'y'
               {
+                  dumpMemory(0,0x80);
                   showCpu(&cpu);
                   SYSTEMOUTDEC("instructions needed: ",instructionCounter);
                   SYSTEMOUT("");
@@ -1242,15 +1465,39 @@ uint8_t forth()
               {
                   Command_t command;
                   uint16_t callCount=0;
+                  // copy pc memory to vm memory
+                  for(k=0;k<M_SIZE*2;k+=2)
+                  {
+                    uint16_t cc;
+                    cc=(uint16_t) (Memory_u8[k+1]<<8)+Memory_u8[k];
+                    cpu.M[0][k/2]=cc;
 
+                    //writeMemory(&cpu,0,cc);
+                    //cpu.Pc++;
+                    //SYSTEMOUTHEX("",cpu.M[0][k/2]);
+                  }
+                  //dumpMem(&cpu);
+                  //dumpMem(&cpu);
+                  /*
+                  for(k=0;k<100;k+=2)
+                  {
+                    cpu.Pc=k/2;
+                    SYSTEMOUTHEX("\nadr:",k);
+                    SYSTEMOUTHEX("readMem:",readMemory(&cpu,0));
+                    //SYSTEMOUTHEX(" cpuMem:",cpu.M[0][k/2]);
+                  }*/
                   command=getDirEntryPointer(id)->code;
+                  //dumpMem(&cpu);
+                  cpu.Pc=(getDirEntryPointer(id)->code)/2;
+                  //printf("cpu.pc:%x",cpu.Pc);
+
                   //SYSTEMOUT_("         ");
                   instructionCounter=1;
-                  executeVm(&cpu,command);
+                  //executeVm(&cpu,command);
                   if(debugWord)
                   {
                       disassmbleWord(command);
-                      if((command&COMMANDGROUP2MASK)==CALL) callCount++;
+                      //if((command&COMMANDGROUP2MASK)==CALL) callCount++;
                       SYSTEMOUT_("\t\t stack: ");
                       dumpStack(&cpu);
                       SYSTEMOUTCR;
@@ -1259,39 +1506,47 @@ uint8_t forth()
                   SYSTEMOUTHEX("\ninstr: ",getDirEntryPointer(id)->code);
                   showCpu(&cpu);
 #endif
-                  uint8_t n=200; // max instruction until stop ( for debugging )
-
-                  while((cpu.retsp!=0)&(n>0)) // run until return stack is empty
+                  uint8_t n=20; // max instruction until stop ( for debugging )
+                  cpu.Sp=1;
+                  while((cpu.Sp!=0)&(n>0)) // run until return stack is empty
                   {
-                      command=Memory_u8[cpu.regpc+1]<<8;
-                      command|=Memory_u8[cpu.regpc];
+                      SYSTEMOUTHEX("return stack:",cpu.Sp)
+                    //command=Memory_u8[cpu.regpc+1]<<8;
+                      //command|=Memory_u8[cpu.regpc];
+                      //cpu->Pc=command;
                       //SYSTEMOUTHEX("hex",command);
                       instructionCounter++;
                       if(debugWord&&(callCount<2))
                       {
-                          {SYSTEMOUTHEX("adr:",cpu.regpc);}
-                          executeVm(&cpu,command);
-                          disassmbleWord(command);
-                          SYSTEMOUT_("\t\t stack: ");
-                           dumpStack(&cpu);
-                          SYSTEMOUTCR;
-                          /*
-                          if(instructionCounter++==20)
                           {
-                              instructionCounter=0;
-                              SYSTEMOUT("press space ==> next ");
-                              GETCHAR;
-                          }*/
-                      }else executeVm(&cpu,command);
-                      if((command&COMMANDGROUP2MASK)==CALL) callCount++;
-                      if(command==(COMMANDGROUP2|RTS)) --callCount;
+                            //SYSTEMOUTHEX("adr:",cpu.regpc);}
+
+                            executeVm(&cpu);
+                            disassmbleWord(command);
+                            SYSTEMOUT_("\t\t stack: ");
+                            dumpStack(&cpu);
+                            SYSTEMOUTCR;
+                          }
+
+                      }else
+                      {
+                        //printf(" cpu.pc vorher:%x",cpu.Pc);
+                        executeVm(&cpu);
+                        showCpu(&cpu);
+                        //dumpMem(&cpu);
+                        //printf(" cpu.pc nachher:%x",cpu.Pc);
+                      }
+                      //if((command&COMMANDGROUP2MASK)==CALL) callCount++;
+                      //if(command==(COMMANDGROUP2|RTS)) --callCount;
 
 #ifdef DEBUG
                       SYSTEMOUTHEX("\ninstr ",command);
                       showCpu(&cpu);
 #endif
-                      //n--; // enable this to limit number of instructions ( for debugging )
+                      n--; // enable this to limit number of instructions ( for debugging )
                   }
+                  cpyVm2Mem(&cpu); // copy the memory of the virtual machine back to the pc memory
+                  //dumpMemory(0,100);
                   debugWord=false;
               }break;
           }
