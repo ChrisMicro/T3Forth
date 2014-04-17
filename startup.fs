@@ -14,9 +14,24 @@
 
 : init 
           \ initialize data stack pointer
-          LDA 10       \ data stack entries ->A
+          LDA 9       \ data stack entries ->A
           STA +ABS 8   \ A->data stack pointer
-          ;  
+          ; 
+ \ PUSHA is mandatory for the forth system
+ \ the compiler will place a call to this word
+ \ when a constant shall be pushed on stack
+ : PUSHA 
+					STA +ABS 7 \ A->reg0
+					
+					\ increment data stack pointer
+          LDA +ABS 8
+          SAF
+          PLUS 0 
+          STA +ABS 8
+          
+          LDA +ABS 7 \ reg0->A
+				 	STA +IND 8 \ A->(dsp)
+          ;        
 : dsp1+ 
 					\ increment data stack pointer
           LDA +ABS 8
@@ -43,18 +58,7 @@
 					LDA +ABS 7 \ reg0->A
 					;
 					 
- : pusha 
-					STA +ABS 7 \ A->reg0
-					
-					\ increment data stack pointer
-          LDA +ABS 8
-          SAF
-          PLUS 0 
-          STA +ABS 8
-          
-          LDA +ABS 7 \ reg0->A
-				 	STA +IND 8 \ A->(dsp)
-          ;         
+  
           
 : 1+ 		
 					LDA 0
@@ -62,7 +66,12 @@
 					PLUS +IND 8
 					STA +IND 8
 					;
-
+: 2+
+					popa
+					CAF
+					PLUS 2
+					PUSHA
+					;
 : + 
 					popa
 					CAF
@@ -72,28 +81,27 @@
 
 : dup 
 					LDA +IND 8 \ (dsp)->A
-					pusha
+					PUSHA
 					;
 					
 h# \ switch to hex input mode
 
-: 0=		
-					LDA +ABS 8 	\ dsp->A
-					DEC 0 			\ A--
-					STA +ABS 7 	\ A->reg0
-					LDA +IND 7 	\ (reg0)->A
+: = ( n1 n2 -- f )
+					popa
 					
-					CMP +IND 8 \ compare A,(dsp)
+					CMP +IND 8 			\ compare A,(dsp)
 					
-					JMPEQ +REL 4
-					LDA 0
-					JMP +REL 2
-					LDA 1FF
+					JMPEQ +REL 4		\ if equal jump to A=1FF
+					LDA 0						\ if not equal A=0
+					JMP +REL 2			\ jump to store
+					LDA 1FF					
 					
-					STA +IND 8 \ A->(dsp)
+					STA +IND 8
 					;
-					
-: 0<> 0= 0= ;
+
+: 0= ( n -- f ) \ not working yet
+					0 = 
+					;
 						
 					
 
