@@ -291,7 +291,7 @@ Index_t appendEntryCode(Index_t place, Index_t indexToForthWord)
 **************************************************************************/
 Index_t appendCode(Index_t place, Index_t vmInstruction)
 {
-  printf("\nappendCode place:%d, instr:%x",place,vmInstruction);
+ // printf("\nappendCode place:%d, instr:%x",place,vmInstruction);
 
 	 Memory_u8[place++]=vmInstruction&0xFF;
 	 Memory_u8[place++]=vmInstruction>>8;
@@ -639,11 +639,15 @@ void compile(Index_t compileIndex)
                   if(pd!=0)
                   {
                     compileIndex= appendCode(compileIndex,LDA); // T3 gusub unconditional
+                    //printf("index%x, value%x \n",compileIndex,LDA);
                     compileIndex= appendCode(compileIndex, number); // address for gosub
+                    //printf("index%x, value%x \n",compileIndex,number);
                     compileIndex= appendCode(compileIndex,GSBU); // T3 gusub unconditional
+                    //printf("index%x, value%x \n",compileIndex,GSBU);
                     DirEntry_t * de;
                     de=getDirEntryPointer(pd);
-                    compileIndex= appendCode(compileIndex, de->code); // address for PUSHDATA
+                    compileIndex= appendCode(compileIndex, (de->code)/2); // address for PUSHDATA ( /2 for word address )
+                    //printf("index%x, value%x \n",compileIndex,(de->code)/2);
                   }else SYSTEMOUT("fatal error: please provide PUSHA Forth word");
                 }
 			}
@@ -833,11 +837,11 @@ void compile(Index_t compileIndex)
 				{
 	            	if(labelStackPointer==0)
 	            	{
-	            	  SYSTEMOUT("compile stop");
+	            	  //SYSTEMOUT("compile stop");
 	            		//compileIndex= appendCode(compileIndex, RTS|COMMANDGROUP2); // lastEntry=return command of cpu
-	            	  SYSTEMOUTHEX("compile index",compileIndex);
+	            	  //SYSTEMOUTHEX("compile index",compileIndex);
 	            	  compileIndex= appendCode(compileIndex,(Index_t) PLPC);
-	            	  SYSTEMOUTOCT(" oct:",PLPC);
+	            	  //SYSTEMOUTOCT(" oct:",PLPC);
 	            	  nextEntry(compileIndex);
 	            	  SYSTEMOUT_(" ");
 	            	}else SYSTEMOUT(" error: conditional not closed");
@@ -893,7 +897,7 @@ void compile(Index_t compileIndex)
                     //printf("---Id%x---, ---Id/2:%x---",id,id/2);
                     DirEntry_t * de=getDirEntryPointer(id);
                     compileIndex= appendCode(compileIndex, (de->code)/2); // address for gosub/2 because vm needs word address
-                    SYSTEMOUT("new word");
+                    //SYSTEMOUT("new word");
                   }
                 }break;
             }
@@ -1094,7 +1098,7 @@ void dumpStack(Cpu_t *cpu)
     // get datastackpointer
     cpu->Pc=DATASTACKPOINTER;
     dsp=readMemory(cpu,0);
-    //SYSTEMOUTHEX("stack deph:",count);
+    //SYSTEMOUTHEX("dsp:",dsp);
     count=dsp-DATASTACK;
     //SYSTEMOUTHEX("stack deph:",count);
     for(n=0; n<count;n++){
@@ -1113,7 +1117,7 @@ uint8_t forth()
 
   Cpu_t cpu;
   simulatorReset(&cpu);
-  initStack(&cpu);
+
   dumpMemory(0,0x20);
 
   addDirEntry("none",0);
@@ -1207,7 +1211,7 @@ uint8_t forth()
   addDirEntry("immediate",FORTH_IMMEDIATE);
 
   addDirEntry("endBuiltInWords",5);
-
+  initStack(&cpu);
   showDictionary();
 
   Index_t id;
@@ -1215,6 +1219,7 @@ uint8_t forth()
   uint8_t exitFlag=false;
   while(!exitFlag)
   {
+    cpyMem2Vm(&cpu);
       //getWordFromStream();
       getWordFromStreamWithOutComments();
 
