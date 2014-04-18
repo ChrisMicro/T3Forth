@@ -24,6 +24,7 @@ extern "C"
     #define RAMHEAPSTART            0x1800 // location, where FORTH variables are stored, at this address the VM must provide RAM
     #define DICTIONARYSTARTADDRESS  0x2000
 
+    #define REG0             0x7
     #define DATASTACKPOINTER 0x8
     #define DATASTACK        0x9
 
