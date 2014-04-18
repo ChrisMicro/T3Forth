@@ -61,14 +61,13 @@
 					LDA +ABS 7 \ reg0->A
 					;
 					 
-  
-          
 : 1+ ( n -- n+1 )
 					LDA 0
 					SAF
 					PLUS +IND 8
 					STA +IND 8
 					;
+					
 : 2+ ( n -- n+2 )
 					popa
 					CAF
@@ -83,8 +82,6 @@
 					STA +IND 8
 					;
 
-
-					
 h# \ switch to hex input mode
 
 : = ( n1 n2 -- f )
@@ -101,7 +98,16 @@ h# \ switch to hex input mode
 					;
 
 : 0= ( n -- f ) 
-					0 = 
+					LDA 0
+					
+					CMP +IND 8 			\ compare A,(dsp)
+					
+					JMPEQ +REL 4		\ if equal jump to A=1FF
+					LDA 0						\ if not equal A=0
+					JMP +REL 2			\ jump to store
+					LDA 1FF					
+					
+					STA +IND 8
 					;
 						
 : 1- ( n -- n-1 )
@@ -189,7 +195,7 @@ h# \ switch to hex input mode
 					\ get A from return stack and store into data stack
 				 	PLA \ (--RSP)->A
 				 	STA +IND 8 \ A->(dsp)	
-;
+					;
 
 : dup ( n - n n )
 					LDA +IND 8 \ (dsp)->A
@@ -213,7 +219,7 @@ h# \ switch to hex input mode
 					\ store reg0 in next
 					LDA +ABS 7 \ reg0->A
 					STA +IND 6 \ A->(regn)
-;					
+					;					
 
 : over ( n1 n2 -- n1 n2 n1 )
 					\ create pointer to next of stack	
@@ -225,7 +231,7 @@ h# \ switch to hex input mode
 					LDA +IND 6 \ (regn)->A
 					
 					PUSHA
-;
+					;
 
 : rot ( a b c -- b c a ) 
 					\ create pointer to next of stack	
@@ -252,5 +258,8 @@ h# \ switch to hex input mode
 					\ store saved top of stack in next
 					LDA +ABS 7
 					STA +IND 6
-					
 					;
+
+\ if test
+: test if 44 else 55 then ;
+
