@@ -665,13 +665,68 @@ void compile(Index_t compileIndex)
 
             switch(forthwordCode)
             {
-            /*
-              case T3_ABS:{
-                  uint16_t cc=(uint16_t) (Memory_u8[compileIndex+1]<<8)+Memory_u8[compileIndex];
-                  cc+=ABS;
-                  Memory_u8[compileIndex]=cc&0xFF;
-                  Memory_u8[compileIndex+1]=cc>>8;
-              }break;*/
+
+            // forth word: if
+            case FORTH_IF: // tbd: stack for nested if's
+            {
+                //SYSTEMOUT("_IF_");
+
+                // (dsp)->reg0
+                compileIndex= appendCode(compileIndex,(Index_t) LDA+IND);
+                compileIndex= appendCode(compileIndex,(Index_t) DATASTACKPOINTER);
+                compileIndex= appendCode(compileIndex,(Index_t) STA+ABS);
+                compileIndex= appendCode(compileIndex,(Index_t) REG0);
+                // drop
+                compileIndex= appendCode(compileIndex,(Index_t) LDA+ABS);
+                compileIndex= appendCode(compileIndex,(Index_t) DATASTACKPOINTER);
+                compileIndex= appendCode(compileIndex,(Index_t) DEC);
+                compileIndex= appendCode(compileIndex,(Index_t) 0);
+                compileIndex= appendCode(compileIndex,(Index_t) STA+ABS);
+                compileIndex= appendCode(compileIndex,(Index_t) DATASTACKPOINTER);
+
+                // compare
+                compileIndex= appendCode(compileIndex,(Index_t) LDA);
+                compileIndex= appendCode(compileIndex,(Index_t) 0777);
+                compileIndex= appendCode(compileIndex,(Index_t) CMP+ABS);
+                compileIndex= appendCode(compileIndex,(Index_t) REG0);
+                compileIndex= appendCode(compileIndex,(Index_t) JMPR+EQ_FLAG);
+
+                labelStack[labelStackPointer++]=compileIndex;
+                // the jump has to be modified late on by FORTH_THEN
+                // conditional jump to "then"
+                compileIndex= appendCode(compileIndex,(Index_t) 0);
+            }break;
+            // forth word: else
+
+            case FORTH_ELSE:
+            {
+                //SYSTEMOUT("_ELSE_");
+                // set jmp address from "if" to this location+2 ( compileIndex )
+                tmp=(Index_t ) Memory_u8[labelStack[labelStackPointer-1]]+(Memory_u8[labelStack[labelStackPointer-1]+1]<<8);
+                appendCode(labelStack[labelStackPointer-1],(tmp | compileIndex)/2+2);
+
+
+                // set a JMP witch will be modified by "then"
+                compileIndex= appendCode(compileIndex,(Index_t) JMPU);
+                // the jump has to be modified late on by FORTH_THEN
+
+                // the new label is the address of "else"
+                labelStack[labelStackPointer-1]=compileIndex;
+
+                // address of the jump "
+                compileIndex= appendCode(compileIndex,(Index_t) 0);
+
+            }break;
+            // forth word: then
+            case FORTH_THEN:
+            {
+                //SYSTEMOUT("_THEN_");
+                // modify the jmp location of "label". This may be the address from "if" or "else"
+                labelStackPointer--;
+                tmp=(Index_t ) Memory_u8[labelStack[labelStackPointer]]+(Memory_u8[labelStack[labelStackPointer]+1]<<8);
+                appendCode(labelStack[labelStackPointer],(tmp | compileIndex)/2);
+            }break;
+
 /*
             	// forth string start word: s"
             	case FORTH_STRING:{ // make a string in code memory
@@ -715,36 +770,7 @@ void compile(Index_t compileIndex)
             		compileIndex= appendCode(compileIndex,(Index_t) value);
             	}break;
 
-				// forth word: if
-				case FORTH_IF: // tbd: stack for nested if's
-				{
-					//SYSTEMOUT("_IF_");
-					labelStack[labelStackPointer++]=compileIndex;
-					// the jump has to be modified late on by FORTH_THEN
-					// conditional jump to "then"
-					compileIndex= appendCode(compileIndex,(Index_t) JMPZ |COMMANDGROUP2);
-				}break;
-				// forth word: else
-				case FORTH_ELSE:
-				{
-					//SYSTEMOUT("_ELSE_");
-					// set jmp address from "if" to this location+2 ( compileIndex )
-					tmp=(Index_t ) Memory_u8[labelStack[labelStackPointer-1]]+(Memory_u8[labelStack[labelStackPointer-1]+1]<<8);
-					appendCode(labelStack[labelStackPointer-1],tmp | (compileIndex+2));
-					// the new label is the address of "else"
-					labelStack[labelStackPointer-1]=compileIndex;
-					// set a JMP witch will be modified by "then"
-					compileIndex= appendCode(compileIndex,(Index_t) JMP |COMMANDGROUP2);
-				}break;
-				// forth word: then
-				case FORTH_THEN:
-				{
-					//SYSTEMOUT("_THEN_");
-					// modify the jmp location of "label". This may be the address from "if" or "else"
-					labelStackPointer--;
-					tmp=(Index_t ) Memory_u8[labelStack[labelStackPointer]]+(Memory_u8[labelStack[labelStackPointer]+1]<<8);
-					appendCode(labelStack[labelStackPointer],tmp | compileIndex);
-				}break;
+
 				// forth word: begin
 				case FORTH_BEGIN:
 				{
@@ -1153,6 +1179,7 @@ uint8_t forth()
   //addDirEntry("+IND", T3_IND );
   addDirEntry("JMP", JMPU | T3_2WORD );
   addDirEntry("JMPEQ", JMPS|   EQ_FLAG | T3_2WORD );
+  addDirEntry("JMPNEQ", JMPR|   EQ_FLAG | T3_2WORD );
   addDirEntry("JMPGT", JMPS|   GT_FLAG | T3_2WORD );
   addDirEntry("LDA", LDA  | T3_2WORD);
   addDirEntry("STA", STA  | T3_2WORD);
@@ -1441,7 +1468,7 @@ uint8_t forth()
                   for(k=id;k<de->indexOfNextEntry;)
                   {
                       //if(k==codestart){SYSTEMOUT("===== code =======");}
-                      SYSTEMOUTHEX("adr:",k);
+                      SYSTEMOUTHEX("wadr:",k);
 
                       uint16_t cc=(uint16_t) (Memory_u8[k+1]<<8)+Memory_u8[k];
                       SYSTEMOUTHEX(" ",cc);
@@ -1478,7 +1505,7 @@ uint8_t forth()
                       do
                       {
                           cc=(uint16_t) (Memory_u8[k+1]<<8)+Memory_u8[k];
-                          SYSTEMOUTHEX("adr:",k);
+                          SYSTEMOUTHEX("adr:",k/2);
                           SYSTEMOUTHEX(" ",cc);
                           SYSTEMOUTOCT(" oct:",cc&T3_MASK);
                           k+=2;
