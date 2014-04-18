@@ -629,40 +629,40 @@ SYSTEMOUTCR;
           uint8_t shift=instr&07;
           switch(tmp)
           {
-          //#define ROL 00700 // rotate left n bits
-          case ROL:{
-            tmp=cpu->A;
-            tmp=tmp<<shift;
-            tmp|=cpu->A>>(13-shift);
-            if(tmp&010000)cpu->flags|=(1<<SF_FLAG);
-            else cpu->flags&=~(1<<SF_FLAG);
-            cpu->A=tmp&0777;
-          }
-          //#define ROR 00710 // rotate right n bits
-          case ROR:{
-            tmp=cpu->A;
-            tmp=tmp>>shift;
-            tmp|=cpu->A<<(13-shift);
-            if(tmp&010000)cpu->flags|=(1<<SF_FLAG);
-            else cpu->flags&=~(1<<SF_FLAG);
-            cpu->A=tmp&0777;
-          }
-          //#define SFL 00720 // shift left n bits
-          case SFL:{
-            tmp=cpu->A;
-            tmp=tmp<<shift;
-            cpu->A=tmp&0777;
-            if(tmp&010000)cpu->flags|=(1<<SF_FLAG);
-            else cpu->flags&=~(1<<SF_FLAG);
-          }
-          //#define SFR 00730 // shift right n bits
-          case SFR:{
-            tmp=cpu->A;
-            tmp=tmp>>shift;
-            cpu->A=tmp&0777;
-            if((cpu->A)>>(shift-1)&1)cpu->flags|=(1<<SF_FLAG);
-            else cpu->flags&=~(1<<SF_FLAG);
-          }
+            //#define ROL 00700 // rotate left n bits
+            case ROL:{
+              tmp=cpu->A;
+              tmp=tmp<<shift;
+              tmp|=cpu->A>>(13-shift);
+              if(tmp&010000)cpu->flags|=(1<<SF_FLAG);
+              else cpu->flags&=~(1<<SF_FLAG);
+              cpu->A=tmp&0777;
+            }break;
+            //#define ROR 00710 // rotate right n bits
+            case ROR:{
+              tmp=cpu->A;
+              tmp=tmp>>shift;
+              tmp|=cpu->A<<(13-shift);
+              if(tmp&010000)cpu->flags|=(1<<SF_FLAG);
+              else cpu->flags&=~(1<<SF_FLAG);
+              cpu->A=tmp&0777;
+            }break;
+            //#define SFL 00720 // shift left n bits
+            case SFL:{
+              tmp=cpu->A;
+              tmp=tmp<<shift;
+              cpu->A=tmp&0777;
+              if(tmp&010000)cpu->flags|=(1<<SF_FLAG);
+              else cpu->flags&=~(1<<SF_FLAG);
+            }break;
+            //#define SFR 00730 // shift right n bits
+            case SFR:{
+              tmp=cpu->A;
+              tmp=tmp>>shift;
+              cpu->A=tmp&0777;
+              if((cpu->A)>>(shift-1)&1)cpu->flags|=(1<<SF_FLAG);
+              else cpu->flags&=~(1<<SF_FLAG);
+            }break;
             default:
             {
               ERROR("error: unknown instruction",instr);
