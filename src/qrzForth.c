@@ -585,6 +585,7 @@ void disassmbleWord(Index_t code)
 #define FORTH_WHILE	0xF111
 #define FORTH_REPEAT 0xF112
 #define FORTH_IMMEDIATE 0xF113
+#define FORTH_PLUSVAL 0xF114 // add a value to the current memory location
 
 #define T3_ABS 0xF114
 #define T3_IND 0xF114
@@ -847,6 +848,29 @@ void compile(Index_t compileIndex)
 	            	}else SYSTEMOUT(" error: conditional not closed");
 	                exitFlag=true;
 				}break;
+				// increase the current code by the given value
+				// this command is useful for some T3 assembler instructions like SFL
+				// The shift left code needs an offset to know how many bits have to be shift left
+				// e.g.
+				// The code for SFL is 0720 ( shift 0 bits left )
+				// the code 0721 will shift one bit left
+				// the code 0722 will shift two bits left
+                case FORTH_PLUSVAL:
+                {
+                  int32_t num;
+
+                  getWordFromStreamWithOutComments();
+                  if(getNumber(WordBuffer,&num))
+                  {
+                     uint16_t current;
+                    current=Memory_u8[compileIndex-2];
+                    current|=Memory_u8[compileIndex-1]<<8;
+                    current+=num;
+                    Memory_u8[compileIndex-2]=current&0xFF;
+                    Memory_u8[compileIndex-1]=current>>8;
+                  }
+                  else SYSTEMOUT("error, no number");
+                }break;
 
                 // if it was not an immediate word, add the code to the new forth word
                 default:
@@ -885,7 +909,9 @@ void compile(Index_t compileIndex)
                           compileIndex= appendCode(compileIndex,num+relative);
                         }
                         else SYSTEMOUT("error, no number");
-                    }else if((forthwordCode&~T3_MASK)==T3_1WORD)
+                    }else
+
+                    if((forthwordCode&~T3_MASK)==T3_1WORD)
                     {
                       compileIndex= appendCode(compileIndex,((forthwordCode&T3_MASK)));
                     }else SYSTEMOUT("error, no T3_1WORD");
@@ -1055,14 +1081,7 @@ void cpyMem2Vm(Cpu_t *cpu)
     cpu->M[0][k/2]=cc;
   }
 }
-void cpyVm2Mem(Cpu_t *cpu)
-{
-  uint16_t k;
-  for(k=0;k<M_SIZE;k++)
-  {
-    writeMem(k,cpu->M[0][k]);
-  }
-}
+
 void writeMem(uint16_t wordAddress, uint16_t value)
 {
   Memory_u8[wordAddress*2]=value&0xFF;
@@ -1074,6 +1093,14 @@ uint16_t readMem(uint16_t wordAddress)
   value=Memory_u8[wordAddress*2];
   value|=Memory_u8[wordAddress*2+1]<<8;
   return value;
+}
+void cpyVm2Mem(Cpu_t *cpu)
+{
+  uint16_t k;
+  for(k=0;k<M_SIZE;k++)
+  {
+    writeMem(k,cpu->M[0][k]);
+  }
 }
 // initialize the virtual data stack pointer in memory
 void initStack(Cpu_t *cpu)
@@ -1126,6 +1153,7 @@ uint8_t forth()
   //addDirEntry("+IND", T3_IND );
   addDirEntry("JMP", JMPU | T3_2WORD );
   addDirEntry("JMPEQ", JMPS|   EQ_FLAG | T3_2WORD );
+  addDirEntry("JMPGT", JMPS|   GT_FLAG | T3_2WORD );
   addDirEntry("LDA", LDA  | T3_2WORD);
   addDirEntry("STA", STA  | T3_2WORD);
   addDirEntry("SAF", SAF  | T3_1WORD);
@@ -1134,6 +1162,17 @@ uint8_t forth()
   addDirEntry("PLUS", PLUS | T3_2WORD);
   addDirEntry("DEC", DEC | T3_2WORD);
   addDirEntry("CMP", CMP | T3_2WORD);
+  addDirEntry("INVM", INVM | T3_2WORD);
+  addDirEntry("SFL", SFL  | T3_1WORD);
+  addDirEntry("SFR", SFR  | T3_1WORD);
+
+  addDirEntry("AND", AND | T3_2WORD);
+  addDirEntry("OR", OR | T3_2WORD);
+  addDirEntry("EXOR", EXOR | T3_2WORD);
+
+  addDirEntry("PHA", PHA  | T3_1WORD);
+  addDirEntry("PLA", PLA  | T3_1WORD);
+
   //addDirEntry("0=",       CMPZA           |COMMANDGROUP2);
   //addDirEntry("PLPC",     PLPC            |COMMANDGROUP2);
   /*
@@ -1209,6 +1248,7 @@ uint8_t forth()
   addDirEntry("allot",FORTH_ALLOT);
   addDirEntry("s\"",FORTH_STRING);
   addDirEntry("immediate",FORTH_IMMEDIATE);
+  addDirEntry("+VAL",FORTH_PLUSVAL);
 
   addDirEntry("endBuiltInWords",5);
   initStack(&cpu);
@@ -1548,7 +1588,7 @@ uint8_t forth()
                       SYSTEMOUTHEX("\ninstr ",command);
                       showCpu(&cpu);
 #endif
-                      n--; // enable this to limit number of instructions ( for debugging )
+                      //n--; // enable this to limit number of instructions ( for debugging )
                   }
                   cpyVm2Mem(&cpu); // copy the memory of the virtual machine back to the pc memory
                   //dumpMemory(0,100);
